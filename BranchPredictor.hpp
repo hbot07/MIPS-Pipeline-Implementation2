@@ -12,15 +12,29 @@ struct BranchPredictor {
 
 struct SaturatingBranchPredictor : public BranchPredictor {
     std::vector<std::bitset<2>> table;
-    SaturatingBranchPredictor(int value) : table(1 << 14, value) {}
+    SaturatingBranchPredictor(int value) : table(1 << 14, value) {} // 1<<14 is 2^14
 
     bool predict(uint32_t pc) {
         // your code here
-        return false;
+        int pc_14 = pc & 0x3fff; // 0x3fff is 2^14 - 1
+        return table[pc_14][0];
     }
 
     void update(uint32_t pc, bool taken) {
         // your code here
+        int pc_14 = pc & 0x3fff;
+        if(taken) {
+            if(table[pc_14].operator==(std::bitset<2>(3)))
+                return;
+            else
+                table[pc_14] = std::bitset<2>(table[pc_14].to_ulong() + 1);
+        } else {
+            if(table[pc_14].operator==(std::bitset<2>(0)))
+                return;
+            else
+                table[pc_14] = std::bitset<2>(table[pc_14].to_ulong() - 1);
+        }
+
     }
 };
 
@@ -31,11 +45,22 @@ struct BHRBranchPredictor : public BranchPredictor {
 
     bool predict(uint32_t pc) {
         // your code here
-        return false;
+        return bhr[0];
     }
 
     void update(uint32_t pc, bool taken) {
         // your code here
+        if(taken) {
+            if(bhr.operator==(std::bitset<2>(3)))
+                return;
+            else
+                bhr = std::bitset<2>(bhr.to_ulong() + 1);
+        } else {
+            if(bhr.operator==(std::bitset<2>(0)))
+                return;
+            else
+                bhr = std::bitset<2>(bhr.to_ulong() - 1);
+        }
     }
 };
 
