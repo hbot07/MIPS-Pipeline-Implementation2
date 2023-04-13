@@ -25,8 +25,8 @@ int main(int argc, char *argv[]) {
     }
 
     //use SaturatingBranchPredictor and calculate the accuracy
-    ofstream MyFile("./Outputs/SaturatingBranchPredictor_predictions.txt");
     for (int start = 0; start <= 3; start++) {
+        ofstream sbpFile("./Outputs/SaturatingBranchPredictor_predictions"+ to_string(start) +".txt");
         std::cout << "SaturatingBranchPredictor initial table values: " << start << std::endl;
         SaturatingBranchPredictor sbp(start);
         long correct = 0;
@@ -45,12 +45,14 @@ int main(int argc, char *argv[]) {
             bool predict = sbp.predict(pc_int);
             if (predict == taken_bool)
                 correct++;
+            sbpFile << pc + " " + to_string(predict) << endl;
             sbp.update(pc_int, taken_bool);
     }
     std::cout << " accuracy: " << (double) correct / lines.size() << std::endl;
     }
     //use BHRBranchPredictor and calculate the accuracy
     for (int start = 0; start <= 3; start++) {
+        ofstream bhrFile("./Outputs/BHRBranchPredictor_predictions"+ to_string(start) +".txt");
         std::cout << "BHRBranchPredictor start value: " << start << std::endl;
         BHRBranchPredictor bbp(start);
         long correct = 0;
@@ -69,6 +71,7 @@ int main(int argc, char *argv[]) {
             bool predict = bbp.predict(pc_int);
             if (predict == taken_bool)
                 correct++;
+            bhrFile << pc + " " + to_string(predict) << endl;
             bbp.update(pc_int, taken_bool);
         }
         std::cout << " accuracy: " << (double) correct / lines.size() << std::endl;
