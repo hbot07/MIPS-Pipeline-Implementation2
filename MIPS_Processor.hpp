@@ -26,6 +26,8 @@ struct MIPS_Architecture {
     int reg_flags[32] = {0};
     int ex_mem[32] = {0};
     int ex_mem_available[32] = {0};
+    int mem_wb[32] = {0};
+    int mem_wb_available[32] = {0};
     std::vector<std::vector<std::string>> commands;
     std::vector<int> commandCount;
     enum exit_code {
@@ -475,27 +477,26 @@ struct MIPS_Architecture {
 
 
             //mem stage
-
             if (mem_flag) {
                 mem_op = mem_op_buffer;
-                mem_reg = mem_reg_buffer;
                 alu_result_buffer = alu_result;
-
+                mem_reg = mem_reg_buffer;
                 //alu_flag = 1;
                 switch (instructions2[mem_op_buffer]) {
-                    case 8:
+                    case 8: // sw
                         data[alu_result / 4] = registers[registerMap[mem_reg_buffer]];
                         break;
-                    case 7:
+                    case 7: // lw
                         memory_out = data[alu_result / 4];
                         break;
-                    default:
+                    default: // other instructions
                         memory_out = memory_out;
                         break;
                 }
                 std::cout << mem_op_buffer << " mem\n";                    // requires mem_reg and and mem_op
+                mem_wb_available[registerMap[mem_reg]] = 1;
+                mem_wb[registerMap[mem_reg]] = memory_out;
             } else { alu_flag = 0; }
-
 
             //alu stage
             if (branch_flag == 1) {
@@ -508,33 +509,49 @@ struct MIPS_Architecture {
                     goto dec_skip;
                 }
             }
-
             if (alu_flag) {
                 mem_op_buffer = command0;
                 mem_reg_buffer = command1;
+                int c2=registers[registerMap[command2]], c3=registers[registerMap[command3]];
                 if(reg_flags[registerMap[command2]]){
                     if(ex_mem_available[registerMap[command2]]){
-                        registers[registerMap[command2]] = ex_mem[registerMap[command2]];
+                        c2 = ex_mem[registerMap[command2]];
+                    }
+                    else{
+                        if(mem_wb_available[registerMap[command2]]){
+                            c2 = mem_wb[registerMap[command2]];
+                        }
                     }
                 }
                 if(reg_flags[registerMap[command3]]){
                     if(ex_mem_available[registerMap[command3]]){
-                        registers[registerMap[command3]] = ex_mem[registerMap[command3]];
+                        c3 = ex_mem[registerMap[command3]];
+                    }
+                    else{
+                        if(mem_wb_available[registerMap[command3]]){
+                            c3 = mem_wb[registerMap[command3]];
+                        }
                     }
                 }
-                //requires comman parameters of previous instruction
+                //requires common parameters of previous instruction
+                instructions2["last"] = -1;
                 switch (instructions2[command0]) {
                     case 7: // lw
                     case 8: // sw
-                    case 10: // beq
-                    case 11: // bne
-                    case 9: // j
-                        alu_result = aluExecute(0, registers[registerMap[command2]], stoi(command3),
+                        alu_result = aluExecute(0, c2, stoi(command3),
                                                 instructions2[command0]);
+                        break;
+                    case 10: // sll
+                    case 11: // srl
+                    case 9: //addi
+                        alu_result = aluExecute(0, c2, stoi(command3),
+                                                instructions2[command0]);
+                        ex_mem[registerMap[command1]] = alu_result;
+                        ex_mem_available[registerMap[command1]] = 1;
                         break;
                     case 3:
                     case 4:
-                        branch_flag1 = aluExecute(registers[registerMap[command1]], registers[registerMap[command2]], 0,
+                        branch_flag1 = aluExecute(registers[registerMap[command1]], c2, 0,
                                                   instructions2[command0]);
                         clockCycles++;
                         printRegisters(clockCycles);
@@ -545,16 +562,17 @@ struct MIPS_Architecture {
                     case -1:
                         break;
                     default:
-                        alu_result = aluExecute(registers[registerMap[command2]], registers[registerMap[command3]], 0,
+                        alu_result = aluExecute(c2, c3, 0,
                                                 instructions2[command0]);
+                        ex_mem[registerMap[command1]] = alu_result;
+                        ex_mem_available[registerMap[command1]] = 1;
                         break;
                 }
                 dec_flag = 1;
                 std::cout << command0 << " alu\n";
 
             }
-            ex_mem[registerMap[command1]] = alu_result;
-            ex_mem_available[registerMap[command1]] = 1;
+
             alu_skip:
 
             //dec stage
@@ -572,15 +590,17 @@ struct MIPS_Architecture {
                             command1 = command[1];
                             reg_flags[registerMap[command[1]]] = 1;
                             ex_mem_available[registerMap[command[1]]] = 0;
+                            mem_wb_available[registerMap[command[1]]] = 0;
                             alu_flag = 1;
                         } else {
-                            if(ex_mem_available[registerMap[command[2]]]){
+                            if(ex_mem_available[registerMap[command[2]]] || mem_wb_available[registerMap[command[2]]]){
                                 command0 = command[0];
                                 command3 = command[3];
                                 command2 = command[2];
                                 command1 = command[1];
                                 reg_flags[registerMap[command[1]]] = 1;
                                 ex_mem_available[registerMap[command[1]]] = 0;
+                                mem_wb_available[registerMap[command[1]]] = 0;
                                 alu_flag = 1;
                             }
                             else{
@@ -598,7 +618,7 @@ struct MIPS_Architecture {
                         goto start;
 
                         //memory_ops
-                    case 7:
+                    case 7: //lw
                         if (!(reg_flags[registerMap[command[3]]])) {
                             command0 = command[0];
                             command3 = command[2];
@@ -607,8 +627,9 @@ struct MIPS_Architecture {
                             alu_flag = 1;
                             reg_flags[registerMap[command[1]]] = 1;
                             ex_mem_available[registerMap[command[1]]] = 0;
+                            mem_wb_available[registerMap[command[1]]] = 0;
                         } else {
-                            if(ex_mem_available[registerMap[command[3]]]){
+                            if(ex_mem_available[registerMap[command[3]]] || mem_wb_available[registerMap[command[3]]]){
                                 command0 = command[0];
                                 command3 = command[2];
                                 command2 = command[3];
@@ -616,6 +637,7 @@ struct MIPS_Architecture {
                                 alu_flag = 1;
                                 reg_flags[registerMap[command[1]]] = 1;
                                 ex_mem_available[registerMap[command[1]]] = 0;
+                                mem_wb_available[registerMap[command[1]]] = 0;
                             }
                             else{
                                 alu_flag = 0;
@@ -631,7 +653,7 @@ struct MIPS_Architecture {
                             command1 = command[1];
                             alu_flag = 1;
                         } else {
-                            if(ex_mem_available[registerMap[command[3]]] && ex_mem_available[registerMap[command[1]]]){
+                            if((ex_mem_available[registerMap[command[3]]] || mem_wb_available[registerMap[command[3]]] || !(reg_flags[registerMap[command[3]]])) && (ex_mem_available[registerMap[command[1]]] || mem_wb_available[registerMap[command[1]]] || !(reg_flags[registerMap[command[1]]]))){
                                 command0 = command[0];
                                 command3 = command[2];
                                 command2 = command[3];
@@ -661,8 +683,18 @@ struct MIPS_Architecture {
                             alu_flag = 1;
                             if_flag = 0;
                         } else {
-                            alu_flag = 0;
-                            if_flag = 0;
+                            if((ex_mem_available[registerMap[command[1]]] || mem_wb_available[registerMap[command[1]]] || !(reg_flags[registerMap[command[1]]])) && (ex_mem_available[registerMap[command[2]]] || mem_wb_available[registerMap[command[2]]] || !(reg_flags[registerMap[command[2]]]))){
+                                command0 = command[0];
+                                command3 = command[3];
+                                command2 = command[2];
+                                command1 = command[1];
+                                alu_flag = 1;
+                                if_flag = 0;
+                            }
+                            else{
+                                alu_flag = 0;
+                                if_flag = 0;
+                            }
                         }
                         break;
                     default:
@@ -673,22 +705,28 @@ struct MIPS_Architecture {
                             command1 = command[1];
                             reg_flags[registerMap[command[1]]] = 1;
                             ex_mem_available[registerMap[command[1]]] = 0;
+                            mem_wb_available[registerMap[command[1]]] = 0;
                             alu_flag = 1;
+                            // std::cout << "here 3\n";
                         } else {
-                            if(ex_mem_available[registerMap[command[2]]] && ex_mem_available[registerMap[command[3]]]){
+                            if((ex_mem_available[registerMap[command[2]]] || mem_wb_available[registerMap[command[2]]] || !(reg_flags[registerMap[command[2]]])) && (ex_mem_available[registerMap[command[3]]] || mem_wb_available[registerMap[command[3]]] || !(reg_flags[registerMap[command[3]]]))){
                                 command0 = command[0];
                                 command3 = command[3];
                                 command2 = command[2];
                                 command1 = command[1];
                                 reg_flags[registerMap[command[1]]] = 1;
                                 ex_mem_available[registerMap[command[1]]] = 0;
+                                mem_wb_available[registerMap[command[1]]] = 0;
                                 alu_flag = 1;
+                                // std::cout << "here 1\n";
                             }
                             else{
                                 alu_flag = 0;
                                 if_flag = 0;
+                                // std::cout << "here 2\n";
                             }
                         }
+                        // std::cout << (ex_mem_available[registerMap[command[2]]] || mem_wb_available[registerMap[command[2]]] || !(reg_flags[registerMap[command[2]]])) << " " << (ex_mem_available[registerMap[command[3]]] || mem_wb_available[registerMap[command[3]]] || !(reg_flags[registerMap[command[3]]])) << "\n";
                         break;
 
                 }
